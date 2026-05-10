@@ -1,7 +1,8 @@
-// src/context/Web3Context.tsx
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { ethers } from 'ethers';
 import { switchToBaseSepolia } from '../utils/network'
+
+const LS_KEY = 'walletAddress';
 
 interface Web3ContextType {
   provider: ethers.BrowserProvider | null;
@@ -19,35 +20,94 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
   const [address, setAddress] = useState<string | null>(null);
   const [chainId, setChainId] = useState<bigint | null>(null);
 
-  const connect = async () => {
-    if (!window.ethereum) return alert("Instala MetaMask");
-    
-    try {
-      const _provider = new ethers.BrowserProvider(window.ethereum);
-      // Validar red antes de obtener signer
-      await switchToBaseSepolia(_provider);
-      console.log(_provider)
-      
-      const _signer = await _provider.getSigner();
-      const _address = await _signer.getAddress();
-      const network = await _provider.getNetwork();
+  const _connect = useCallback(async (_provider: ethers.BrowserProvider) => {
+    await switchToBaseSepolia(_provider);
 
-      setProvider(_provider);
-      setSigner(_signer);
-      setAddress(_address);
-      setChainId(network.chainId);
+    const _signer = await _provider.getSigner();
+    const _address = await _signer.getAddress();
+    const network = await _provider.getNetwork();
+
+    setProvider(_provider);
+    setSigner(_signer);
+    setAddress(_address);
+    setChainId(network.chainId);
+
+    localStorage.setItem(LS_KEY, _address);
+  }, []);
+
+  const connect = useCallback(async () => {
+    const eth = window.ethereum;
+    if (!eth) return alert("Instala MetaMask");
+
+    try {
+      const _provider = new ethers.BrowserProvider(eth);
+      await _connect(_provider);
     } catch (error) {
       console.error("Conexión fallida", error);
     }
-  };
+  }, [_connect]);
 
-  // Escuchar cambios de cuenta o red
   useEffect(() => {
-    if (window.ethereum) {
-      window.ethereum.on("accountsChanged", () => window.location.reload());
-      window.ethereum.on("chainChanged", () => window.location.reload());
-    }
-  }, []);
+    const savedAddress = localStorage.getItem(LS_KEY);
+    if (!savedAddress) return;
+
+    const eth = window.ethereum;
+    if (!eth) return;
+
+    const autoConnect = async () => {
+      try {
+        const accounts = await eth.request({ method: 'eth_accounts' });
+        if (accounts.length === 0) {
+          localStorage.removeItem(LS_KEY);
+          return;
+        }
+        const _provider = new ethers.BrowserProvider(eth);
+        await _connect(_provider);
+      } catch (error) {
+        console.error("Auto-conexión fallida", error);
+        localStorage.removeItem(LS_KEY);
+      }
+    };
+
+    autoConnect();
+  }, [_connect]);
+
+  useEffect(() => {
+    const eth = window.ethereum;
+    if (!eth) return;
+
+    const handleAccountsChanged = async (accounts: unknown) => {
+      const _accounts = accounts as string[];
+      if (_accounts.length === 0) {
+        setProvider(null);
+        setSigner(null);
+        setAddress(null);
+        setChainId(null);
+        localStorage.removeItem(LS_KEY);
+        return;
+      }
+      if (_accounts[0].toLowerCase() === address?.toLowerCase()) return;
+
+      try {
+        const _provider = new ethers.BrowserProvider(eth);
+        await _connect(_provider);
+      } catch (error) {
+        console.error("Error al cambiar cuenta", error);
+      }
+    };
+
+    const handleChainChanged = async (chainIdHex: unknown) => {
+      setChainId(BigInt(chainIdHex as string));
+    };
+
+    eth.on("accountsChanged", handleAccountsChanged);
+    eth.on("chainChanged", handleChainChanged);
+
+    return () => {
+      eth.removeListener("accountsChanged", handleAccountsChanged);
+      eth.removeListener("chainChanged", handleChainChanged);
+    };
+  }, [_connect, address]);
 
   return (
     <Web3Context.Provider value={{ provider, signer, address, connect, chainId }}>

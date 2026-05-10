@@ -10,7 +10,8 @@ export async function switchToBaseSepolia(provider: ethers.BrowserProvider) {
           { chainId: baseSepoliaChainId },
         ]);
       } catch (switchError) {
-        if (switchError.code === 4902) {
+        const err = switchError as { code?: number };
+        if (err.code === 4902) {
           try {
             await provider.send("wallet_addEthereumChain", [baseSepoliaParams]);
           } catch (addError) {
