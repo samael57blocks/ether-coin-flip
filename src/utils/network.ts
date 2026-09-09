@@ -1,16 +1,17 @@
 import { ethers } from 'ethers';
-import { baseSepoliaChainId, baseSepoliaParams } from "../config/constants"
+import { baseSepoliaChainIdHex, baseSepoliaParams } from "../config/constants"
 
 export async function switchToBaseSepolia(provider: ethers.BrowserProvider) {
   try {
     const currentChainId = await provider.send("eth_chainId", []);
-    if (currentChainId !== baseSepoliaChainId) {
+    if (currentChainId !== baseSepoliaChainIdHex) {
       try {
         await provider.send("wallet_switchEthereumChain", [
-          { chainId: baseSepoliaChainId },
+          { chainId: baseSepoliaChainIdHex },
         ]);
       } catch (switchError) {
         const err = switchError as { code?: number };
+        console.log(err)
         if (err.code === 4902) {
           try {
             await provider.send("wallet_addEthereumChain", [baseSepoliaParams]);

@@ -1,4 +1,5 @@
 import { StartCoinFlipButton } from './components/StartCoinFlipButton';
+import { Dashboard } from './components/Dashboard'
 import { useWeb3 } from './context/Web3Context';
 import './App.css'
 
@@ -13,6 +14,7 @@ function App() {
       ) : (
         <>
           <StartCoinFlipButton/>
+          <Dashboard />
         </>
       )}
     </>
