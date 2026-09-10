@@ -1,64 +1,63 @@
-import { useMyContract } from "./useMyContract";
-import { ethers } from "ethers";
+import { useEffect } from "react";
+import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { parseEther } from "viem";
+import { type Address } from "viem";
+import { useQueryClient } from "@tanstack/react-query";
+import abi from "../../config/abi/MyContract.json";
+import { CONTRACT_ADDRESS } from "../../config/constants";
 
 export const useCoinFlip = () => {
-    const contract = useMyContract();
+  const queryClient = useQueryClient();
 
-    const startCoinFlip = async (wager: string) => {
-        if (!contract) {
-            console.error("Contract is not initialized");
-            return;
-        }
-        console.log(`Starting Coin Flip`);
-        console.log(`Wager Amount: ${wager} ${typeof wager} ETH`);
-        try {
-            const transaction = await contract.newCoinFlip({
-                value: ethers.parseEther(wager),
-                gasLimit: 300000
-            });
-            console.log(transaction)
-            await transaction.wait();
-            console.log(`Coin flip started with a wager of ${wager} ETH!`);
-        } catch (error) {
-            console.error("Error starting coin flip:", error);
-        }
-    };
+  const {
+    writeContractAsync,
+    data: txHash,
+    isPending,
+    error: writeError,
+  } = useWriteContract();
 
-    const endCoinFlip = async (coinFlipID: string, startingWager: string) => {
-        if (!contract) {
-            console.error("Contract is not initialized");
-            return;
-        }
-        try {
-            const coinFlipIDInt = parseInt(coinFlipID);
-            const wagerValue = BigInt(startingWager);
+  const {
+    isLoading: isConfirming,
+    isSuccess,
+    error: txError,
+  } = useWaitForTransactionReceipt({ hash: txHash });
 
-            alert(
-                `Ending Coin Flip ID: ${coinFlipIDInt} with Wager: ${ethers.formatEther(wagerValue)} ETH`
-            );
-            const transaction = await contract.endCoinFlip(coinFlipIDInt, {
-                value: wagerValue,
-            });
-            await transaction.wait();
-            console.log(
-                `Coin flip with ID ${coinFlipIDInt} ended with a wager of ${ethers.formatEther(wagerValue)} ETH!`
-            );
+  // Invalidate on-chain reads after transaction mines
+  useEffect(() => {
+    if (isSuccess) {
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === "readContract",
+      });
+    }
+  }, [isSuccess, queryClient]);
 
-            const coinFlipDetails = await contract.EtherCoinFlipStructs(coinFlipIDInt);
-            const currentAddress = await (contract.runner as ethers.Signer).getAddress();
-            if (coinFlipDetails.winner.toLowerCase() === currentAddress.toLowerCase()) {
-                alert("Congratulations! You won the coin flip!");
-            } else {
-                alert("Sorry, you lost the coin flip.");
-            }
-        } catch (error) {
-            console.error("Error ending coin flip:", error);
-            alert("Error ending coin flip. Please check the console for details.");
-        }
-    };
+  const newCoinFlip = async (wager: string) => {
+    const hash = await writeContractAsync({
+      address: CONTRACT_ADDRESS as Address,
+      abi,
+      functionName: "newCoinFlip",
+      value: parseEther(wager),
+    });
+    return hash;
+  };
 
-    return {
-        startCoinFlip,
-        endCoinFlip,
-    };
-}
+  const endCoinFlip = async (coinFlipID: number, wager: bigint) => {
+    const hash = await writeContractAsync({
+      address: CONTRACT_ADDRESS as Address,
+      abi,
+      functionName: "endCoinFlip",
+      args: [coinFlipID],
+      value: wager,
+    });
+    return hash;
+  };
+
+  return {
+    newCoinFlip,
+    endCoinFlip,
+    isPending,
+    isConfirming,
+    isSuccess,
+    error: writeError ?? txError,
+  };
+};
