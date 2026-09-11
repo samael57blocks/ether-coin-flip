@@ -23,3 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Foundry
+cache/
+out/
+
+# SDD artifacts
+sdd/
