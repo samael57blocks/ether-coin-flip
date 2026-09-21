@@ -1,16 +1,24 @@
-import { ethers } from "ethers";
+import { formatEther } from "viem";
 import { useCoinFlip } from "../hooks/web3/useCoinFlip";
-import { useSubgraphCoinFlips } from "../hooks/web3/useSubgraphCoinFlips";
+import { useActiveCoinFlips } from "../hooks/web3/useActiveCoinFlips";
 
 export const Dashboard = () => {
-  const { endCoinFlip } = useCoinFlip();
-  const { activeCoinFlips, status } = useSubgraphCoinFlips();
+  const { endCoinFlip, isPending, isConfirming } = useCoinFlip();
+  const { activeCoinFlips, isLoading, error } = useActiveCoinFlips();
+
+  const handleEndCoinFlip = async (id: bigint, wager: bigint) => {
+    try {
+      await endCoinFlip(Number(id), wager);
+    } catch (err) {
+      console.error("Error ending coin flip:", err);
+    }
+  };
 
   return (
     <main>
-      {status === "pending" && <div>Loading active coin flips...</div>}
-      {status === "error" && <div>Error occurred querying the subgraph.</div>}
-      {status === "success" && activeCoinFlips.length > 0 ? (
+      {isLoading && <div>Loading active coin flips...</div>}
+      {error && <div>Error querying on-chain data.</div>}
+      {!isLoading && !error && activeCoinFlips.length > 0 ? (
         <table>
           <thead>
             <tr>
@@ -18,39 +26,32 @@ export const Dashboard = () => {
               <th>Bet Starter</th>
               <th>Wager</th>
               <th>Action</th>
-              <th>Transaction</th>
             </tr>
           </thead>
           <tbody>
             {activeCoinFlips.map((flip) => (
-              <tr key={flip.id}>
-                <td>{flip.theCoinFlipID}</td>
-                <td>{flip.theBetStarter}</td>
-                <td>{ethers.formatEther(flip.theStartingWager)} ETH</td>
+              <tr key={flip.ID.toString()}>
+                <td>{flip.ID.toString()}</td>
+                <td>{flip.betStarter}</td>
+                <td>{formatEther(flip.startingWager)} ETH</td>
                 <td>
                   <button
-                    onClick={() =>
-                      endCoinFlip(flip.theCoinFlipID, flip.theStartingWager)
-                    }
+                    onClick={() => handleEndCoinFlip(flip.ID, flip.startingWager)}
+                    disabled={isPending || isConfirming}
                   >
-                    End Coin Flip
+                    {isPending
+                      ? "Awaiting Approval..."
+                      : isConfirming
+                        ? "Mining..."
+                        : "End Coin Flip"}
                   </button>
-                </td>
-                <td>
-                  <a
-                    href={`https://base-sepolia.blockscout.com/tx/${flip.transactionHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View on Block Explorer
-                  </a>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : (
-        <p>No active coin flips available D:</p>
+        !isLoading && !error && <p>No active coin flips available D:</p>
       )}
     </main>
   );
